@@ -32,7 +32,8 @@ trazabilidad de un lote completo.
 
 ## 1. Los dos flujos posibles de "casamiento" PCBA <-> IC
 
-**A) Preflash antes de ensamble (die/IC a nivel componente, antes de SMT)**
+**A) Preflash antes de ensamble (die/IC a nivel componente, antes de SMT)
+— confirmado como el escenario real de esta línea (ver sección 6).**
 - El IC se programa (llave + a veces firmware base) en el equipo preflash
   (ej. Data I/O PSV7000/PSV3000) **antes** de montarse en la PCBA.
 - El PCBA no tiene serial propio todavía; el serial/ID del IC se generó primero.
@@ -128,49 +129,54 @@ programa específico. Los puntos que consistentemente se auditan en planta son:
 | Llave rechazada como "ya usada" en unidad nueva | Reintento de programación sin marcar el intento anterior como fallido en el key server | Confirmar que el software de la estación reporta FAIL al key server antes de reintentar, no solo al MES |
 | Read-back de verificación falla pero la llave sí se grabó | HSM del IC bloqueado (retry counter agotado) o challenge-response mal configurado en el script de test | Revisar datasheet del secure element para límite de intentos; no forzar reintentos indiscriminados, puede bloquear el IC permanentemente |
 
-## 6. Caso de estudio: respuesta de proveedor Data I/O sobre casamiento PCBA<->IC
+## 6. Caso de estudio: escenario confirmado con Data I/O (offline, a nivel componente)
 
-Registro de una consulta real a un contacto de Data I/O sobre cómo el PSV7000
-maneja el casamiento PCBA<->IC, para no repetir la misma pregunta base y
-enfocar la siguiente conversación en los huecos que dejó sin resolver.
+Registro de una consulta real a un contacto de Data I/O (Adolfo) sobre cómo el
+PSV maneja el casamiento PCBA<->IC, más la corrección del propio usuario sobre
+el escenario real de su línea, para no repetir preguntas ya resueltas y
+enfocar la cita con el experto del proveedor (Monty) en los huecos reales.
 
-**Lo que confirmó el proveedor:**
-- El PSV7000 puede grabar el serial dentro del IC (serialización a nivel
+**Escenario confirmado (por el usuario, no por el proveedor):**
+- El equipo Data I/O corre **offline, a nivel componente** — programa la
+  memoria (IC suelto) antes de que se monte en el PCBA. Esto corresponde al
+  flujo A de la sección 1, no al B.
+- En ese momento, Data I/O graba la llave dentro de la memoria **y genera/
+  asigna un serial** asociado a esa llave.
+- Cuando la memoria se ensambla en el PCBA, el PCBA se debe **laserear con
+  ese mismo serial** para que el marcado físico del board quede casado
+  contra la llave que ya vive dentro de esa memoria específica.
+- El reto no es "inline vs. offline" (ya está resuelto: es offline) — es el
+  **alcance real de Data I/O** dentro de ese proceso: si su responsabilidad
+  termina en escribir llave+serial en la memoria, o si también entrega la
+  interfaz/dato de salida que una lasereadora consumiría para marcar el
+  serial correcto en el PCBA correcto.
+
+**Lo que confirmó el proveedor (respuesta genérica de Adolfo, aún sin
+validar contra este escenario offline/componente específico):**
+- El PSV puede grabar el serial dentro del IC (serialización a nivel
   memoria), además de programar firmware.
 - El "casamiento" PCBA<->IC no lo resuelve Data I/O por sí solo — depende de
   cómo el cliente/MES haya diseñado el flujo. Data I/O reporta qué grabó; el
   MES decide cómo enlazarlo con la identidad del PCBA (ver flujo de la
   sección 3, paso 4-5).
 
-**Lo que la respuesta del proveedor NO especifica (y hay que confirmar antes
-de asumir un diseño de línea):**
-- Si el PSV7000 opera **inline** (PCBA físicamente presente en el fixture
-  durante la programación) o **offline/preflash** (IC suelto, antes de SMT).
-  Esto determina si el casamiento es 1:1 en tiempo real o si hay que
-  reconstruirlo después (ver flujos A/B de la sección 1).
-- Si el serial se genera dentro del PSV o lo entrega el MES vía API en cada
-  ciclo.
-- Qué protocolo usa el PSV para hablar con el MES (SECS/GEM, OPC-UA, REST
-  propietario) — define si es viable engancharse con un sistema de
-  trazabilidad/reportes propio.
-- Si el flujo es preflash offline: qué mecanismo garantiza la secuencia FIFO
-  entre el feeder de SMT y el log de programación del PSV, para no perder la
-  genealogía IC->PCBA. Este es el punto más frágil y el que más vale la pena
-  llevar a la cita con el experto del proveedor (Monty).
-- Si el read-back de verificación del PSV es consultable externamente (para
-  que ICT lo lea y lo cruce contra el serial del PCBA) o solo vive en el log
-  interno del equipo.
-
-**Sobre "empezar la serialización con la etiqueta generada en la memoria del
-IC y de ahí derivar/regenerar el serial del PCBA" (pregunta abierta del
-usuario):** es arquitectónicamente válido — es el patrón "IC-first" — pero
-solo es robusto si el PSV opera inline (read-back del IC y escaneo del board
-en la misma transacción). Si el PSV opera preflash offline, el patrón
-"IC-first" obliga a reconstruir el casamiento después (vía ICT/lectura de
-UID + log de pick-and-place), con el riesgo de FIFO roto ya descrito en la
-sección 1. La alternativa "PCBA-first" (el board ya trae serial y el IC lo
-hereda) evita ese riesgo pero invierte la dirección de la pregunta. Confirmar
-cuál aplica antes de diseñar el control plan de trazabilidad.
+**Preguntas abiertas para la cita con Monty (alcance real de Data I/O en un
+flujo offline/componente):**
+- ¿El PSV solo escribe llave+serial en la memoria, o también genera el dato
+  de salida (archivo/registro/API) que alimentaría una estación de
+  laser-marking aguas abajo?
+- ¿En qué formato entrega ese par llave-serial — archivo local, registro en
+  base de datos, llamada en vivo al MES?
+- Con el programado ocurriendo antes del ensamble: ¿qué mecanismo preserva
+  la correlación entre la posición física del componente en el reel/charola
+  y la unidad de PCBA en la que termina montado? Este es el punto más frágil
+  del flujo offline/componente (riesgo de FIFO roto, ver sección 1).
+- ¿Existe una re-verificación integrada (escaneo del serial laseareado vs.
+  lectura de la llave en la memoria ya montada) para detectar un mal
+  casamiento antes de que la unidad avance en la línea, o eso hay que
+  construirlo del lado del cliente?
+- ¿Tienen spec/diagrama de la interfaz de salida del PSV para poder
+  dimensionar esto del lado de laser-marking?
 
 # Cómo trabajar en este repo
 
