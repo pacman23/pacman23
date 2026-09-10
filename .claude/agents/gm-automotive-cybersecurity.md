@@ -128,6 +128,50 @@ programa específico. Los puntos que consistentemente se auditan en planta son:
 | Llave rechazada como "ya usada" en unidad nueva | Reintento de programación sin marcar el intento anterior como fallido en el key server | Confirmar que el software de la estación reporta FAIL al key server antes de reintentar, no solo al MES |
 | Read-back de verificación falla pero la llave sí se grabó | HSM del IC bloqueado (retry counter agotado) o challenge-response mal configurado en el script de test | Revisar datasheet del secure element para límite de intentos; no forzar reintentos indiscriminados, puede bloquear el IC permanentemente |
 
+## 6. Caso de estudio: respuesta de proveedor Data I/O sobre casamiento PCBA<->IC
+
+Registro de una consulta real a un contacto de Data I/O sobre cómo el PSV7000
+maneja el casamiento PCBA<->IC, para no repetir la misma pregunta base y
+enfocar la siguiente conversación en los huecos que dejó sin resolver.
+
+**Lo que confirmó el proveedor:**
+- El PSV7000 puede grabar el serial dentro del IC (serialización a nivel
+  memoria), además de programar firmware.
+- El "casamiento" PCBA<->IC no lo resuelve Data I/O por sí solo — depende de
+  cómo el cliente/MES haya diseñado el flujo. Data I/O reporta qué grabó; el
+  MES decide cómo enlazarlo con la identidad del PCBA (ver flujo de la
+  sección 3, paso 4-5).
+
+**Lo que la respuesta del proveedor NO especifica (y hay que confirmar antes
+de asumir un diseño de línea):**
+- Si el PSV7000 opera **inline** (PCBA físicamente presente en el fixture
+  durante la programación) o **offline/preflash** (IC suelto, antes de SMT).
+  Esto determina si el casamiento es 1:1 en tiempo real o si hay que
+  reconstruirlo después (ver flujos A/B de la sección 1).
+- Si el serial se genera dentro del PSV o lo entrega el MES vía API en cada
+  ciclo.
+- Qué protocolo usa el PSV para hablar con el MES (SECS/GEM, OPC-UA, REST
+  propietario) — define si es viable engancharse con un sistema de
+  trazabilidad/reportes propio.
+- Si el flujo es preflash offline: qué mecanismo garantiza la secuencia FIFO
+  entre el feeder de SMT y el log de programación del PSV, para no perder la
+  genealogía IC->PCBA. Este es el punto más frágil y el que más vale la pena
+  llevar a la cita con el experto del proveedor (Monty).
+- Si el read-back de verificación del PSV es consultable externamente (para
+  que ICT lo lea y lo cruce contra el serial del PCBA) o solo vive en el log
+  interno del equipo.
+
+**Sobre "empezar la serialización con la etiqueta generada en la memoria del
+IC y de ahí derivar/regenerar el serial del PCBA" (pregunta abierta del
+usuario):** es arquitectónicamente válido — es el patrón "IC-first" — pero
+solo es robusto si el PSV opera inline (read-back del IC y escaneo del board
+en la misma transacción). Si el PSV opera preflash offline, el patrón
+"IC-first" obliga a reconstruir el casamiento después (vía ICT/lectura de
+UID + log de pick-and-place), con el riesgo de FIFO roto ya descrito en la
+sección 1. La alternativa "PCBA-first" (el board ya trae serial y el IC lo
+hereda) evita ese riesgo pero invierte la dirección de la pregunta. Confirmar
+cuál aplica antes de diseñar el control plan de trazabilidad.
+
 # Cómo trabajar en este repo
 
 - Si el usuario pide agregar procedimientos, checklists, plantillas de control
