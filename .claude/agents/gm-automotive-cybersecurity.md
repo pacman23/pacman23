@@ -178,6 +178,62 @@ flujo offline/componente):**
 - ¿Tienen spec/diagrama de la interfaz de salida del PSV para poder
   dimensionar esto del lado de laser-marking?
 
+## 7. Estrategia propuesta (basada en investigación de producto real, sep 2026)
+
+Investigación pública (no bajo NDA) sobre PSV7000/SentriX/ConneX de Data I/O y
+el estándar IPC-1782, hecha para no depender solo de lo que Adolfo/Monty
+compartan y llegar a la cita con una propuesta concreta que ellos puedan
+confirmar o corregir.
+
+**Hallazgos clave:**
+- El PSV7000 ya genera un **unique device ID** y lot tracking de forma nativa
+  por cada parte programada, con historial completo de programación — no hay
+  que construir esa identidad desde cero.
+- La provisión de llaves corre sobre **SentriX**, con HSM integrado
+  certificado **FIPS 140-2 Level 3** (según material público de producto;
+  confirmar que aplica al modelo/config específico en planta), capaz de
+  inyectar llaves simétricas y asimétricas dentro del flujo de programación.
+- La conectividad hacia MES **no es SECS/GEM tradicional** — es la plataforma
+  **ConneX** de Data I/O, con interfaces **MQTT y GraphQL** (mensajería
+  Industry 4.0). Esto reemplaza la pregunta genérica de protocolo por una
+  pregunta puntual sobre ConneX (ver preguntas actualizadas arriba).
+- Existe un estándar de industria aplicable: **IPC-1782** ("Standard for
+  Manufacturing and Supply Chain Traceability of Electronic Products"),
+  define 4 niveles de trazabilidad correlacionados con las clases IPC
+  (Class 1/2/3/Space-Defense-Medical) según el riesgo del producto final, y
+  aplica explícitamente a ensamble de PCB y trazabilidad de componentes. Para
+  un programa automotriz GM con cybersecurity es esperable exigir un nivel
+  alto (3 o 4) — confirmar contra el CSR del programa específico, no asumir.
+- Práctica de industria consolidada para el marcado físico: **código 2D
+  DataMatrix vía laser marking** (no térmico/inkjet) — permanente, resiste
+  reflow y rework, compatible con grading de calidad de código bajo
+  ISO/IEC 15415/29158, que es lo que típicamente se audita para compliance
+  con IPC-1782.
+
+**Estrategia propuesta:**
+1. Adoptar IPC-1782 como marco formal de trazabilidad (no reinventar el
+   esquema de datos — el estándar ya define qué capturar en cada nivel).
+2. Usar el unique device ID que el PSV7000 ya genera al grabar la llave como
+   fuente de verdad del casamiento, publicado en tiempo real vía ConneX
+   (MQTT) con lote/reel/posición.
+3. La estación de laser marking consulta ConneX (GraphQL, si soporta pull
+   on-demand) para obtener el siguiente device ID en la secuencia FIFO
+   correcta y lo marca como DataMatrix 2D en el PCBA.
+4. Cerrar el loop con un paso de scan-and-compare inmediatamente después del
+   laser marking — lee el código recién marcado y lo cruza contra el device
+   ID reportado por el PSV — para detectar un mal-casamiento antes de que la
+   unidad avance en la línea.
+
+**Fuentes:**
+- [PSV7000 — High-Mix Automated Programming System | Data I/O](https://www.dataio.com/products/psv7000/)
+- [Data I/O Security Provisioning Platform](https://dataio.com/platform/security-provisioning/)
+- [Data I/O SentriX Solutions](https://www.dataio.com/Solutions/SentriX)
+- [Data I/O Announces SentriX Support for NXP EdgeLock SE050](https://www.businesswire.com/news/home/20190731005060/en/Data-IO-Announces-Availability-SentriX%C2%AE-Secure-Provisioning)
+- [IPC-1782 — GlobalSpec standard summary](https://standards.globalspec.com/std/14358527/IPC-1782)
+- [Applying the New IPC Standard for Traceability (I-Connect007)](https://iconnect007.com/index.php/article/102569/applying-the-new-ipc-standard-for-traceability-makes-compliance-and-reporting-easier/102572)
+- [Laser Marking PCBs — Keyence](https://www.keyence.com/products/marker/laser-marker/resources/laser-marking-resources/laser-marking-pcbs.jsp)
+- [Why Laser Marking Is the Only Reliable Solution for PCB Traceability](https://smtmachineline.com/laser-marking-pcb-traceability-reliable-solution/)
+
 # Cómo trabajar en este repo
 
 - Si el usuario pide agregar procedimientos, checklists, plantillas de control
